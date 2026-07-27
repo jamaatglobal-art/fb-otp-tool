@@ -48,37 +48,35 @@ def get_ip_info(proxies=None, retries=1):
 
 # Build proxy data with locale and targeting
 def build_proxy_data(proxy_dict, country_target=None):
-    req_proxies = format_proxy_for_requests({"proxy": proxy_dict})
+    # Ensure we don't modify the original dict during targeting refresh
+    p_dict = proxy_dict.copy()
     
     # Apply targeting if it's a dynamic residential proxy
-    # Based on the user's example: Change6.owlproxy.com:7778:USER_custom_zone_CF_country_cf_sid_08672854_time_15:PASS
-    if proxy_dict.get("username") and country_target:
-        user = proxy_dict["username"]
-        # Replace country target in username if present, or append it
-        # This is a heuristic based on the user's provided format
+    if p_dict.get("username") and country_target:
+        user = p_dict["username"]
         if "_country_" in user:
             parts = user.split("_country_")
             prefix = parts[0]
-            suffix = "_".join(parts[1].split("_")[1:]) # skip the old country code
-            new_user = f"{prefix}_country_{country_target.lower()}_{suffix}"
-            proxy_dict["username"] = new_user
-        
-        # Refresh req_proxies with new username
-        req_proxies = format_proxy_for_requests({"proxy": proxy_dict})
-
+            # Handle the case where the country code might be followed by another underscore
+            remaining = parts[1].split("_", 1)
+            suffix = remaining[1] if len(remaining) > 1 else ""
+            new_user = f"{prefix}_country_{country_target.lower()}_{suffix}".rstrip("_")
+            p_dict["username"] = new_user
+    
+    req_proxies = format_proxy_for_requests({"proxy": p_dict})
     info = get_ip_info(req_proxies)
     if info is None:
         info = FALLBACK_IP_INFO
         
     cc = info["countryCode"]
     return {
-        "proxy": proxy_dict,
-        "country": info["country"],
+        "proxy": p_dict,
+        "country": info.get("country", "Unknown"),
         "country_code": cc,
         "locale": get_locale(cc),
         "timezone": get_timezone(cc),
         "language": get_language(cc),
-        "ip_timezone": info["timezone"]
+        "ip_timezone": info.get("timezone", "Unknown")
     }
 
 # Load proxies from proxies.txt

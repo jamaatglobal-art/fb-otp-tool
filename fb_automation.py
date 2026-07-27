@@ -146,6 +146,7 @@ def main():
         
         try:
             # Sync Proxy
+            # proxy_data already contains the structured proxy info
             proxy_dict = format_proxy_for_requests(proxy_data) if proxy_data else None
             if proxy_dict:
                 print(f" {YELLOW}[*] Using Sync Proxy: {proxy_data.get('proxy', '...')}")

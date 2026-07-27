@@ -181,6 +181,24 @@ def create_worker(wid, email, proxy_data, config, counter):
             with open("output/success.txt", "a", encoding="utf-8") as f:
                 f.write(f"{uid}|{identity['password']}|{email}|{cookie_str}\n")
 
+            # Automatically save to accounts.json for the OTP tool
+            accounts_file = 'accounts.json'
+            accounts_data = {}
+            if os.path.exists(accounts_file):
+                try:
+                    with open(accounts_file, 'r') as f:
+                        accounts_data = json.load(f)
+                except Exception:
+                    accounts_data = {}
+            
+            accounts_data[f"acc_{uid}"] = {
+                "identifier": email,
+                "cookies": cookies
+            }
+            
+            with open(accounts_file, 'w') as f:
+                json.dump(accounts_data, f, indent=4)
+
         else:
             # Parse error response for debugging
             debug_msg = "Unknown Error"

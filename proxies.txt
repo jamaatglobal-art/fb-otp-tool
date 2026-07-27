@@ -1,0 +1,3 @@
+# Put your proxies here in Host:Port:Username:Password format
+# Example:
+# Change6.owlproxy.com:7778:BUm5A89KAN40_custom_zone_CF_country_cf_sid_08672854_time_15:4529845

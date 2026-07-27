@@ -22,13 +22,20 @@ def main():
         if choice == '1':
             clear()
             logo()
+            
+            # Phase 0: Number Generation
+            from core.number_generator import run_multi_range_allocator
+            success = run_multi_range_allocator()
+            if not success:
+                input(f"\n {RED}[!] Number generation failed or skipped. Press Enter to return...")
+                continue
+            
             print(f"\n {YELLOW}[*] Phase 1: Starting Facebook Account Registration...")
             print(f" {WHITE}After finishing, cookies will be saved automatically to accounts.json.")
             print(f"{LINE}\n")
             time.sleep(2)
             
             # Run the registration tool
-            # Assuming main.py is the entry point for registration
             os.system('python3 main.py')
             
             print(f"\n\n{LINE}")

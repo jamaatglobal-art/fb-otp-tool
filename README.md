@@ -1,43 +1,35 @@
-# Facebook OTP Automation Tool
+# Facebook Multi-Account OTP Tool (Upgraded)
 
-This is a Python-based tool designed for Termux to automate Facebook OTP requests using cookies and device rotation.
+এই টুলটি এখন `facebook-account-registration` রিপোজিটরির উন্নত টেকনোলজি ব্যবহার করে আপগ্রেড করা হয়েছে। এতে এখন **TLS Fingerprinting (curl_cffi)** এবং **Advanced User-Agent Rotation** যুক্ত করা হয়েছে যা ফেসবুকের ডিটেকশন এড়াতে সাহায্য করবে।
 
-## Features
-- **Cookie Management:** Uses browser cookies for session persistence.
-- **Device Rotation:** Randomizes User-Agents and device profiles to mimic real mobile devices.
-- **Termux Optimized:** Lightweight and easy to run on Android via Termux.
-- **API Simulation:** Simulates mobile-app-like requests to bypass some security limits.
+## নতুন ফিচারসমূহ:
+- **TLS Fingerprinting**: ব্রাউজারের আসল ফিঙ্গারপ্রিন্ট নকল করে (curl_cffi ব্যবহার করে)।
+- **Advanced User-Agents**: বাস্তবসম্মত মোবাইল এবং অ্যাপ ইউজার-এজেন্ট জেনারেশন।
+- **Better Session Management**: উন্নত সেশন এবং কুকি হ্যান্ডলিং।
+- **Clean UI**: নতুন কালারফুল ইন্টারফেস এবং কাউন্টার।
 
-## Installation in Termux
-
-1. Update packages:
+## কিভাবে ব্যবহার করবেন:
+১. প্রয়োজনীয় লাইব্রেরি ইনস্টল করুন:
    ```bash
-   pkg update && pkg upgrade
+   pip install curl_cffi faker requests
    ```
-2. Install Python and Git:
-   ```bash
-   pkg install python git
-   ```
-3. Clone the repository:
-   ```bash
-   git clone https://github.com/jamaatglobal-art/fb-otp-tool.git
-   ```
-4. Navigate to the directory:
-   ```bash
-   cd fb-otp-tool
-   ```
-5. Install requirements:
-   ```bash
-   pip install requests
-   ```
-
-## Usage
-
-1. Open `fb_automation.py` and add your Facebook cookies in the `COOKIES` dictionary.
-2. Run the tool:
+২. `accounts.json` ফাইলে আপনার ফেসবুক একাউন্টের তথ্য এবং কুকিজ দিন।
+৩. টুলটি রান করুন:
    ```bash
    python fb_automation.py
    ```
 
-## Disclaimer
-**Warning:** This tool is for educational purposes only. Using automation on Facebook may violate their Terms of Service and lead to account suspension or permanent bans. Use at your own risk.
+## একাউন্ট কনফিগারেশন (`accounts.json`):
+```json
+{
+    "account1": {
+        "identifier": "example@email.com",
+        "cookies": {
+            "c_user": "xxxx",
+            "xs": "xxxx",
+            "datr": "xxxx",
+            "fr": "xxxx"
+        }
+    }
+}
+```

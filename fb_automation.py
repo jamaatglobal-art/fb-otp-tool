@@ -2,12 +2,10 @@ import requests
 import json
 import random
 import time
+import os
 
 # --- Configuration ---
-# Replace with your actual Facebook account cookies (obtained from a logged-in browser session)
-# Example: {'c_user': 'your_c_user_value', 'xs': 'your_xs_value', ...}
-# IMPORTANT: Handling cookies securely is crucial. This is a simplified example.
-COOKIES = {}
+ACCOUNTS_FILE = 'accounts.json'
 
 # List of mobile User-Agents to rotate
 USER_AGENTS = [
@@ -18,12 +16,37 @@ USER_AGENTS = [
 ]
 
 # --- Functions ---
-def get_session(cookies: dict = None):
+def load_accounts(filename=ACCOUNTS_FILE):
+    """Loads account data (cookies and identifiers) from a JSON file."""
+    if not os.path.exists(filename):
+        # Create a template if the file doesn't exist
+        template = {
+            "account1": {
+                "identifier": "example1@email.com",
+                "cookies": {"c_user": "val1", "xs": "val2"}
+            },
+            "account2": {
+                "identifier": "example2@email.com",
+                "cookies": {"c_user": "val3", "xs": "val4"}
+            }
+        }
+        with open(filename, 'w') as f:
+            json.dump(template, f, indent=4)
+        print(f"Created template {filename}. Please add your account details there.")
+        return {}
+    
+    try:
+        with open(filename, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        print(f"Error: {filename} is not a valid JSON file.")
+        return {}
+
+def get_session(cookies: dict):
     """Creates a requests session with provided cookies and a random User-Agent."""
     session = requests.Session()
-    if cookies:
-        for k, v in cookies.items():
-            session.cookies.set(k, v)
+    for k, v in cookies.items():
+        session.cookies.set(k, v)
     session.headers.update({
         'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -33,109 +56,54 @@ def get_session(cookies: dict = None):
     })
     return session
 
-def save_cookies(session_cookies, filename='cookies.json'):
-    """Saves session cookies to a JSON file."""
-    with open(filename, 'w') as f:
-        json.dump(session_cookies, f)
-    print(f"Cookies saved to {filename}")
-
-def load_cookies(filename='cookies.json'):
-    """Loads cookies from a JSON file."""
-    try:
-        with open(filename, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
 def attempt_otp_request(session: requests.Session, account_identifier: str):
-    """Placeholder for attempting an OTP request.
-    
-    WARNING: Direct OTP sending via unofficial Facebook APIs is highly complex, risky,
-    and often leads to account bans. This function is a conceptual placeholder and
-    will likely NOT work for sending OTPs directly to arbitrary numbers.
-    Facebook's security measures are designed to prevent such automation.
-    """
+    """Placeholder for attempting an OTP request."""
     print(f"Attempting OTP request for: {account_identifier} with User-Agent: {session.headers['User-Agent']}")
     
-    # This URL is a placeholder. Real Facebook OTP request endpoints are dynamic
-    # and require specific, often encrypted, parameters that are not publicly documented.
-    # Interacting with these directly without proper authorization is against Facebook's terms of service.
-    otp_request_url = "https://m.facebook.com/login/identify/" # This is a discovery page, not an OTP sender
-    
-    # Example payload (highly speculative and likely incorrect for actual OTP sending)
-    payload = {
-        'jazoest': 'your_jazoest_token', # This is a dynamic token
-        'lsd': 'your_lsd_token',       # This is a dynamic token
-        'encpass': '#PWD_BROWSER_ID:your_password', # If trying to login
-        'email': account_identifier, # Or 'phone' for phone number
-        'did_submit': '1',
-        '__user': COOKIES.get('c_user'),
-        '__a': '1',
-        '__req': '1',
-        '__hs': '1',
-        'dpr': '1.5',
-        '__ccg': 'UNKNOWN',
-        '__rev': '1000000000',
-        '__spin_r': '1000000000',
-        '__spin_b': 'base_url',
-        '__spin_t': 'timestamp',
-    }
+    otp_request_url = "https://m.facebook.com/login/identify/"
     
     try:
-        # This is a GET request to the identify page. A real OTP request would be a POST to a different endpoint.
         response = session.get(otp_request_url, params={'q': account_identifier}, allow_redirects=True)
         print(f"Response Status Code: {response.status_code}")
-        print(f"Response URL: {response.url}")
-        # print(response.text) # Uncomment for debugging
         
-        if "code_sent" in response.text.lower(): # Highly unlikely to find this directly
-            print("OTP request *might* have been initiated (highly speculative).")
+        if "code_sent" in response.text.lower():
+            print("OTP request might have been initiated.")
             return True
         else:
-            print("OTP request likely failed or endpoint is incorrect.")
-            print("Consider checking the response content for error messages or redirects.")
+            print("OTP request failed or endpoint is incorrect.")
             return False
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")
         return False
 
-# --- Main execution (example usage) ---
+# --- Main execution ---
 if __name__ == "__main__":
-    print("Starting Facebook OTP Automation Tool (Conceptual)")
+    print("Starting Facebook Multi-Account OTP Tool")
     
-    # Load existing cookies or start fresh
-    # loaded_cookies = load_cookies()
-    # if loaded_cookies:
-    #     COOKIES.update(loaded_cookies)
-    #     print("Loaded cookies from file.")
-    # else:
-    #     print("No cookies found. Please manually populate COOKIES dictionary or log in via browser first.")
+    accounts = load_accounts()
+    if not accounts:
+        print("No accounts found. Please configure accounts.json.")
+    else:
+        for account_name, data in accounts.items():
+            print(f"\n--- Processing Account: {account_name} ---")
+            identifier = data.get('identifier')
+            cookies = data.get('cookies')
+            
+            if not identifier or not cookies:
+                print(f"Skipping {account_name}: Missing identifier or cookies.")
+                continue
 
-    # For demonstration, we'll assume cookies are manually set or obtained.
-    # In a real scenario, you'd need a login flow to get fresh cookies.
-    if not COOKIES:
-        print("Please populate the 'COOKIES' dictionary with valid Facebook session cookies.")
-        print("Without valid cookies, most requests will fail.")
-        # Exit or prompt for login if no cookies
-        # exit()
+            session = get_session(cookies)
+            success = attempt_otp_request(session, identifier)
+            
+            if success:
+                print(f"OTP request attempt for {account_name} successful.")
+            else:
+                print(f"OTP request attempt for {account_name} failed.")
+            
+            # Wait between accounts to avoid detection
+            delay = random.uniform(10, 20)
+            print(f"Waiting {delay:.2f} seconds before next account...")
+            time.sleep(delay)
 
-    # Example account identifier (email or phone number)
-    target_account = "example@email.com" # Replace with the account you want to test
-
-    # Simulate multiple attempts with device rotation
-    for i in range(3):
-        print(f"\n--- Attempt {i+1} ---")
-        session = get_session(COOKIES)
-        success = attempt_otp_request(session, target_account)
-        
-        if success:
-            print("OTP request attempt successful (conceptually).")
-            # save_cookies(session.cookies.get_dict()) # Save updated cookies if any
-            break
-        else:
-            print("OTP request attempt failed.")
-        
-        time.sleep(random.uniform(5, 15)) # Wait before next attempt
-
-    print("\nProcess finished.")
-
+    print("\nAll accounts processed.")

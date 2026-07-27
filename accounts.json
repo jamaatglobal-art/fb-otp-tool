@@ -1,0 +1,20 @@
+{
+    "account1": {
+        "identifier": "example1@email.com",
+        "cookies": {
+            "c_user": "your_c_user_value",
+            "xs": "your_xs_value",
+            "datr": "your_datr_value",
+            "fr": "your_fr_value"
+        }
+    },
+    "account2": {
+        "identifier": "017XXXXXXXX",
+        "cookies": {
+            "c_user": "your_c_user_value",
+            "xs": "your_xs_value",
+            "datr": "your_datr_value",
+            "fr": "your_fr_value"
+        }
+    }
+}

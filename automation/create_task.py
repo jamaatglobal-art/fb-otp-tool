@@ -193,7 +193,13 @@ def create_worker(wid, phone_number, proxy_data, config, counter):
             
             accounts_data[f"acc_{uid}"] = {
                 "identifier": phone_number,
-                "cookies": cookies
+                "cookies": cookies,
+                "config": {
+                    "device_type": device_type,
+                    "browser_type": browser_type,
+                    "server": server,
+                    "locale": locale
+                }
             }
             
             with open(accounts_file, 'w') as f:

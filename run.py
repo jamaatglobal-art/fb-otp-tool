@@ -23,11 +23,27 @@ def main():
             clear()
             logo()
             
-            # Phase 0: Number Generation
-            from core.number_generator import run_multi_range_allocator
-            success = run_multi_range_allocator()
-            if not success:
-                input(f"\n {RED}[!] Number generation failed or skipped. Press Enter to return...")
+            print(f" {CYAN}[1] {WHITE}Generate Numbers using Zenex API")
+            print(f" {CYAN}[2] {WHITE}Use Existing Number_List.txt")
+            print(f"{LINE}")
+            sub_choice = input(f" {CYAN}Select Option: {WHITE}")
+            
+            if sub_choice == '1':
+                # Phase 0: Number Generation
+                from core.number_generator import run_multi_range_allocator
+                success = run_multi_range_allocator()
+                if not success:
+                    input(f"\n {RED}[!] Number generation failed or skipped. Press Enter to return...")
+                    continue
+            elif sub_choice == '2':
+                if not os.path.exists("Number_List.txt") or os.stat("Number_List.txt").st_size == 0:
+                    print(f"\n {RED}[!] Number_List.txt is empty or missing! Please add numbers first.")
+                    input(f"\n {WHITE}Press Enter to return...")
+                    continue
+                print(f"\n {GREEN}[✅] Using existing Number_List.txt")
+            else:
+                print(f"\n {RED}[!] Invalid Choice!")
+                input(f"\n {WHITE}Press Enter to return...")
                 continue
             
             print(f"\n {YELLOW}[*] Phase 1: Starting Facebook Account Registration...")

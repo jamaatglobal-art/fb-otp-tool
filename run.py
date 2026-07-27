@@ -36,12 +36,10 @@ def main():
             print(f" {GREEN}[✔] Cookies saved to accounts.json automatically.")
             print(f"{LINE}")
             
-            cont = input(f" {CYAN}Do you want to start the OTP Tool now? (y/n): {WHITE}").lower()
-            if cont == 'y':
-                print(f"\n {YELLOW}[*] Phase 2: Starting OTP Tool...")
-                time.sleep(1)
-                os.system('python3 fb_automation.py')
-                input(f"\n {WHITE}OTP process finished. Press Enter to return to menu...")
+            print(f"\n {YELLOW}[*] Phase 2: Auto-starting OTP Tool...")
+            time.sleep(1)
+            os.system('python3 fb_automation.py')
+            input(f"\n {WHITE}Process completed. Press Enter to return to menu...")
             
         elif choice == '2':
             clear()

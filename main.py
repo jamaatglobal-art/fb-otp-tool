@@ -42,7 +42,7 @@ def run_create():
     browser_type = select_browser(device_type, config_state, lambda: render_config(config_state))
     server = select_server(config_state, lambda: render_config(config_state))
     proxy_list = get_proxy_list(config_state, lambda: render_config(config_state))
-    proxy_cycle = create_proxy_cycle(proxy_list)
+    # proxy_cycle = create_proxy_cycle(proxy_list) # No longer using simple cycle
     no_proxy_data = get_no_proxy_data()
     max_workers = get_worker_count(config_state, lambda: render_config(config_state))
 
@@ -72,12 +72,24 @@ def run_create():
     sem = threading.Semaphore(max_workers + 5)
     wid_gen = count(1)
 
+    from core.phone_utils import get_country_code
+    from core.proxy_manager import get_sticky_proxy, build_proxy_data
+
     try:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for num in numbers:
                 sem.acquire()
-                proxy_data = next(proxy_cycle) if proxy_cycle else no_proxy_data
                 wid = next(wid_gen)
+                
+                # Proxy Logic: Match Country Code and make Sticky
+                if proxy_list:
+                    base_proxy = random.choice(proxy_list)
+                    country_code = get_country_code(num)
+                    sticky_proxy = get_sticky_proxy(base_proxy, country_code, wid)
+                    proxy_data = build_proxy_data(sticky_proxy, country_code)
+                else:
+                    proxy_data = no_proxy_data
+                
                 future = executor.submit(create_worker, wid, num, proxy_data, config, counter)
                 future.add_done_callback(lambda _: sem.release())
     except KeyboardInterrupt:

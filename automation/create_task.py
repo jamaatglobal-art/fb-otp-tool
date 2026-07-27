@@ -63,23 +63,26 @@ def create_worker(wid, phone_number, proxy_data, config, counter):
         session = create_http_session(device_type, proxy_dict)
         setup_session_cookies(session, device_type)
 
-        ctx = build_request_context(device_type, browser_type, locale)
-
+                ctx = build_request_context(device_type, browser_type, locale)
         base_headers = ctx["base_headers"]
+        
+        # Mirroring: Ensure screen metrics are set in cookies for stickiness
+        screen_res = random.choice(["320x480", "480x800", "540x960", "800x480", "854x480", "960x540", "720x1280", "1280x720", "1080x1920"])
+        session.cookies.update({"m_pixel_ratio": "1", "wd": screen_res})
 
         # Step 1: GET registration page and extract hidden tokens
         response_1 = session.get(f'https://{server}/reg', headers=base_headers).text
 
-        ccp = _search(r'name="ccp" value="([^"]+)"', response_1)
-        lsd = _search(r'name="lsd" value="([^"]+)"', response_1)
-        jazoest = _search(r'name="jazoest" value="([^"]+)"', response_1)
-        reg_instance = _search(r'name="reg_instance" value="([^"]+)"', response_1)
-        reg_impression_id = _search(r'name="reg_impression_id" value="([^"]+)"', response_1)
-        ns_value = _search(r'name="ns" value="([^"]+)"', response_1)
-        logger_id = _search(r'name="logger_id" value="([^"]+)"', response_1)
-        encrypted_token = _search(r'"encrypted"\s*:\s*"([^"]+)"', response_1)
-        fb_dtsg = _search(r'"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"', response_1)
-        privacy_token = _search(r'privacy_mutation_token=([^&]+)', response_1)
+        ccp = _search(r'name="ccp" value="([^"]+)"', response_1) or _search(r'"ccp":"([^"]+)"', response_1)
+        lsd = _search(r'name="lsd" value="([^"]+)"', response_1) or _search(r'"lsd":"([^"]+)"', response_1)
+        jazoest = _search(r'name="jazoest" value="([^"]+)"', response_1) or _search(r'"jazoest":"([^"]+)"', response_1) or "21049"
+        reg_instance = _search(r'name="reg_instance" value="([^"]+)"', response_1) or _search(r'"reg_instance":"([^"]+)"', response_1)
+        reg_impression_id = _search(r'name="reg_impression_id" value="([^"]+)"', response_1) or _search(r'"reg_impression_id":"([^"]+)"', response_1)
+        ns_value = _search(r'name="ns" value="([^"]+)"', response_1) or _search(r'"ns":"([^"]+)"', response_1)
+        logger_id = _search(r'name="logger_id" value="([^"]+)"', response_1) or _search(r'"logger_id":"([^"]+)"', response_1)
+        encrypted_token = _search(r'"encrypted"\s*:\s*"([^"]+)"', response_1) or _search(r'name="encrypted" value="([^"]+)"', response_1)
+        fb_dtsg = _search(r'"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"', response_1) or _search(r'name="fb_dtsg" value="([^"]+)"', response_1)
+        privacy_token = _search(r'privacy_mutation_token=([^&]+)', response_1) or _search(r'"privacy_mutation_token":"([^"]+)"', response_1)
 
         required = [ccp, lsd, jazoest, reg_instance, reg_impression_id,
                     ns_value, logger_id, encrypted_token, fb_dtsg, privacy_token]
@@ -199,7 +202,10 @@ def create_worker(wid, phone_number, proxy_data, config, counter):
                     "browser_type": browser_type,
                     "server": server,
                     "locale": locale,
-                    "proxy_data": proxy_data
+                    "proxy_data": proxy_data,
+                    "headers": base_headers, # Persist full headers
+                    "screen_res": screen_res, # Persist screen resolution
+                    "creation_time": int(time.time())
                 }
             }
             

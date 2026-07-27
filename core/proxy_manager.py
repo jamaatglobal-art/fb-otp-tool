@@ -1,59 +1,34 @@
 import time
 import itertools
+import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 import requests
-from urllib.parse import urlparse
-from ui.colors import GREEN, RED, WHITE, EKL
+from urllib.parse import urlparse, quote
+from ui.colors import GREEN, RED, WHITE, EKL, YELLOW
 from core.settings_manager import load_settings
 from core.locale_data import get_locale, get_timezone, get_language
 
 FALLBACK_IP_INFO = {"country": "United States", "countryCode": "US", "timezone": "America/New_York"}
+PROXIES_FILE = "proxies.txt"
 
-
-# Parse proxy string into structured dict (supports ip:port, ip:port:user:pass, and URL formats)
+# Parse proxy string into structured dict (supports ip:port, ip:port:user:pass)
 def parse_proxy(proxy_str):
     proxy_str = proxy_str.strip()
-    username = None
-    password = None
+    if not proxy_str:
+        return None
+        
+    parts = proxy_str.split(":")
+    if len(parts) == 2:
+        ip, port = parts
+        return {"http": f"http://{ip}:{port}", "https": f"http://{ip}:{port}", "username": None, "password": None}
+    elif len(parts) >= 4:
+        ip, port, user = parts[0], parts[1], parts[2]
+        password = ":".join(parts[3:])
+        return {"http": f"http://{ip}:{port}", "https": f"http://{ip}:{port}", "username": user, "password": password}
+    return None
 
-    if "://" not in proxy_str:
-        parts = proxy_str.split(":")
-        if len(parts) == 2:
-            ip, port = parts
-            if not port.isdigit():
-                return None
-            proxy_url = f"http://{ip}:{port}"
-        elif len(parts) >= 4:
-            ip = parts[0]
-            port = parts[1]
-            if not port.isdigit():
-                return None
-            username = parts[2]
-            password = ":".join(parts[3:])
-            proxy_url = f"http://{ip}:{port}"
-        else:
-            return None
-    else:
-        try:
-            parsed = urlparse(proxy_str)
-            username = parsed.username
-            password = parsed.password
-            netloc = parsed.netloc
-            if '@' in netloc:
-                netloc = netloc.split('@')[-1]
-            proxy_url = f"{parsed.scheme or 'http'}://{netloc}"
-        except Exception:
-            return None
-
-    return {
-        "http": proxy_url,
-        "https": proxy_url,
-        "username": username,
-        "password": password
-    }
-
-
-# Fetch geolocation info for a proxy using ip-api.com
+# Fetch geolocation info for a proxy
 def get_ip_info(proxies=None, retries=1):
     for attempt in range(retries + 1):
         try:
@@ -71,28 +46,30 @@ def get_ip_info(proxies=None, retries=1):
             time.sleep(1)
     return None
 
-
-# Build complete proxy data dict with locale, timezone, and language info
-def build_proxy_data(proxy_dict):
-    req_proxies = None
-    if proxy_dict:
-        username = proxy_dict.get("username")
-        password = proxy_dict.get("password")
-        raw_url = proxy_dict.get("http", "")
-        if username and password:
-            if "://" in raw_url:
-                proto, host = raw_url.split("://", 1)
-                auth_url = f"{proto}://{username}:{password}@{host}"
-            else:
-                auth_url = f"http://{username}:{password}@{raw_url}"
-            req_proxies = {"http": auth_url, "https": auth_url}
-        else:
-            req_proxies = proxy_dict
+# Build proxy data with locale and targeting
+def build_proxy_data(proxy_dict, country_target=None):
+    req_proxies = format_proxy_for_requests({"proxy": proxy_dict})
+    
+    # Apply targeting if it's a dynamic residential proxy
+    # Based on the user's example: Change6.owlproxy.com:7778:USER_custom_zone_CF_country_cf_sid_08672854_time_15:PASS
+    if proxy_dict.get("username") and country_target:
+        user = proxy_dict["username"]
+        # Replace country target in username if present, or append it
+        # This is a heuristic based on the user's provided format
+        if "_country_" in user:
+            parts = user.split("_country_")
+            prefix = parts[0]
+            suffix = "_".join(parts[1].split("_")[1:]) # skip the old country code
+            new_user = f"{prefix}_country_{country_target.lower()}_{suffix}"
+            proxy_dict["username"] = new_user
+        
+        # Refresh req_proxies with new username
+        req_proxies = format_proxy_for_requests({"proxy": proxy_dict})
 
     info = get_ip_info(req_proxies)
     if info is None:
-        print(f"{RED} Warning: Could not determine location for proxy. Using default US settings.")
         info = FALLBACK_IP_INFO
+        
     cc = info["countryCode"]
     return {
         "proxy": proxy_dict,
@@ -104,131 +81,96 @@ def build_proxy_data(proxy_dict):
         "ip_timezone": info["timezone"]
     }
 
+# Load proxies from proxies.txt
+def load_proxies_from_file():
+    if not os.path.exists(PROXIES_FILE):
+        return []
+    with open(PROXIES_FILE, "r") as f:
+        lines = f.readlines()
+    
+    proxies = []
+    for line in lines:
+        parsed = parse_proxy(line)
+        if parsed:
+            proxies.append(parsed)
+    return proxies
 
-# Parse and validate a single proxy input string
-def _input_single_proxy_internal(proxy_str, proxy_list):
-    parsed = parse_proxy(proxy_str)
-    if parsed:
-        data = build_proxy_data(parsed)
-        proxy_list.append(data)
-    else:
-        print(f"{RED} Invalid proxy format!")
-
-
-# Prompt user for multiple proxy inputs (max 40)
-def _input_multiple_proxies_internal(prompt_label, proxy_list):
-    try:
-        cnt_str = input(f" {GREEN}[{RED}●{GREEN}] How many proxies? (Max 40) {EKL} ").strip()
-        if not cnt_str or not cnt_str.isdigit():
-            print(f"{RED} Invalid number!")
-            return
-        cnt = int(cnt_str)
-        if cnt > 40:
-            print(f"{RED} Maximum 40 proxies allowed! You entered {cnt}.")
-            return
-        if cnt < 1:
-            print(f"{RED} Invalid number!")
-            return
-        for i in range(cnt):
-            while True:
-                p_str = input(f" {WHITE}[{RED}●{WHITE}] Enter {prompt_label} [{i+1}/{cnt}] {EKL} ").strip()
-                if not p_str:
-                    continue
-                parsed = parse_proxy(p_str)
-                if parsed:
-                    data = build_proxy_data(parsed)
-                    proxy_list.append(data)
-                    break
-                else:
-                    print(f"{RED} Invalid proxy format!")
-    except KeyboardInterrupt:
-        raise
-    except Exception:
-        print(f"{RED} Invalid input!")
-
-
-# Format proxy config display label for the UI
-def _format_proxy_config_label(proxy_list, source="User"):
-    if not proxy_list:
-        return "Direct"
-    if len(proxy_list) == 1:
-        p = proxy_list[0]
-        if source == "Settings":
-            return f"{p['country']} (Settings)"
-        else:
-            return f"{p['country']} (IP: {p['ip_timezone']})"
-    countries = set(p['country'] for p in proxy_list)
-    suffix = " (Settings)" if source == "Settings" else ""
-    return f"{len(proxy_list)} Proxies ({len(countries)} Countries){suffix}"
-
-
-# Main proxy input handler - loads from settings or prompts user
+# Main proxy handler for registration
 def get_proxy_list(config_state=None, render_callback=None):
-    settings = load_settings()
-    proxy_cfg = settings.get("proxy_settings", {})
-    ask_proxy = proxy_cfg.get("ask_for_proxy", True)
-    def_proxy = proxy_cfg.get("default_proxy", "")
-    prompt_label = "Proxy"
-    config_key = "proxy"
-
-    proxy_list = []
-
-    # Load proxies from settings if configured
-    if def_proxy:
-        parsed_proxies = []
-        if isinstance(def_proxy, list):
-            if len(def_proxy) > 40:
-                print(f"{RED} Warning: Maximum 40 proxies allowed in settings. Using first 40.")
-                def_proxy = def_proxy[:40]
-            for p in def_proxy:
-                parsed = parse_proxy(p)
-                if parsed:
-                    parsed_proxies.append(parsed)
-                else:
-                    print(f"{RED} Warning: Skipping invalid proxy in settings: {p}")
-        elif def_proxy.strip():
-            parsed = parse_proxy(def_proxy)
-            if parsed:
-                parsed_proxies.append(parsed)
-            else:
-                print(f"{RED} Warning: Skipping invalid proxy in settings: {def_proxy}")
-        if parsed_proxies:
-            with ThreadPoolExecutor(max_workers=min(len(parsed_proxies), 5)) as executor:
-                proxy_list.extend(executor.map(build_proxy_data, parsed_proxies))
-
-    if not ask_proxy:
+    proxies_from_file = load_proxies_from_file()
+    
+    if not proxies_from_file:
+        print(f" {YELLOW}[!] {PROXIES_FILE} not found or empty. Using Direct IP.")
         if config_state is not None:
-            config_state[config_key] = _format_proxy_config_label(proxy_list, "Settings")
-        return proxy_list
+            config_state["proxy"] = "Direct (No File)"
+        return []
 
+    # Ask if user wants to use proxy
     if render_callback:
         render_callback()
-
-    proxy_input = input(f" {GREEN}[{RED}●{GREEN}] Enter {prompt_label} (or 'y' for multiple) [Enter to Skip] {EKL} ").strip()
-
-    if proxy_input.lower() == 'y':
-        _input_multiple_proxies_internal(prompt_label, proxy_list)
-    elif proxy_input:
-        _input_single_proxy_internal(proxy_input, proxy_list)
+    
+    choice = input(f" {GREEN}[{RED}●{GREEN}] Use Proxy from {PROXIES_FILE}? (y/n): {EKL} ").strip().lower()
+    
+    if choice != 'y':
+        if config_state is not None:
+            config_state["proxy"] = "Direct (User Skipped)"
+        return []
 
     if config_state is not None:
-        if not proxy_list:
-            no_proxy_data = get_no_proxy_data()
-            config_state[config_key] = f"Direct (IP: {no_proxy_data['country']})"
-        else:
-            config_state[config_key] = _format_proxy_config_label(proxy_list, "User")
+        config_state["proxy"] = f"Loaded {len(proxies_from_file)} from file"
+    
+    return proxies_from_file
 
-    return proxy_list
+# Format proxy for requests
+def format_proxy_for_requests(proxy_data):
+    if not proxy_data or not proxy_data.get("proxy"):
+        return None
+    
+    p = proxy_data["proxy"]
+    user = p.get("username")
+    password = p.get("password")
+    url = p.get("http")
+    
+    if user and password:
+        parsed = urlparse(url)
+        auth_url = f"{parsed.scheme}://{quote(user)}:{quote(password)}@{parsed.netloc}"
+        return {"http": auth_url, "https": auth_url}
+    return {"http": url, "https": url}
 
+# Function to get sticky session IP for a thread
+def get_sticky_proxy(base_proxy, country_code, thread_id):
+    """
+    Customizes a dynamic proxy for a specific thread/session.
+    Adds state target and unique session ID.
+    """
+    proxy = base_proxy.copy()
+    user = proxy.get("username")
+    if not user:
+        return proxy
+        
+    # Example: BUm5A89KAN40_custom_zone_CF_country_cf_sid_08672854_time_15
+    # We will inject/update country and session ID
+    
+    # 1. Ensure country is correct
+    if "_country_" in user:
+        parts = user.split("_country_")
+        prefix = parts[0]
+        rest = "_".join(parts[1].split("_")[1:])
+        user = f"{prefix}_country_{country_code.lower()}_{rest}"
+    
+    # 2. Inject/Update Session ID (sid) for stickiness
+    session_id = f"{int(time.time())}{thread_id}{random.randint(100, 999)}"
+    if "_sid_" in user:
+        parts = user.split("_sid_")
+        prefix = parts[0]
+        rest = "_".join(parts[1].split("_")[1:])
+        user = f"{prefix}_sid_{session_id}_{rest}"
+    else:
+        user = f"{user}_sid_{session_id}"
+        
+    proxy["username"] = user
+    return proxy
 
-# Create infinite cycling iterator for round-robin proxy rotation
-def create_proxy_cycle(proxy_list):
-    if proxy_list:
-        return itertools.cycle(proxy_list)
-    return None
-
-
-# Get locale data for direct connection (no proxy)
 def get_no_proxy_data():
     info = get_ip_info(None)
     if info is None:
@@ -243,28 +185,3 @@ def get_no_proxy_data():
         "language": get_language(cc),
         "ip_timezone": info["timezone"]
     }
-
-
-# Convert proxy_data dict into requests-compatible proxy format with auth
-def format_proxy_for_requests(proxy_data):
-    if not proxy_data:
-        return None
-    proxy_url = proxy_data.get("proxy")
-    if not proxy_url:
-        return None
-    if isinstance(proxy_url, dict):
-        username = proxy_url.get("username")
-        password = proxy_url.get("password")
-        raw_url = proxy_url.get("http", "")
-        if username and password:
-            from urllib.parse import quote
-            safe_user = quote(username, safe="")
-            safe_pass = quote(password, safe="")
-            if "://" in raw_url:
-                proto, host = raw_url.split("://", 1)
-                auth_url = f"{proto}://{safe_user}:{safe_pass}@{host}"
-            else:
-                auth_url = f"http://{safe_user}:{safe_pass}@{raw_url}"
-            return {"http": auth_url, "https": auth_url}
-        return {"http": raw_url, "https": proxy_url.get("https", raw_url)}
-    return {"http": proxy_url, "https": proxy_url}

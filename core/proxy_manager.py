@@ -54,14 +54,24 @@ def build_proxy_data(proxy_dict, country_target=None):
     # Apply targeting if it's a dynamic residential proxy
     if p_dict.get("username") and country_target:
         user = p_dict["username"]
+        target = country_target.upper()
+        
+        # Support both _country_ and _custom_zone_ formats
         if "_country_" in user:
             parts = user.split("_country_")
             prefix = parts[0]
-            # Handle the case where the country code might be followed by another underscore
             remaining = parts[1].split("_", 1)
             suffix = remaining[1] if len(remaining) > 1 else ""
-            new_user = f"{prefix}_country_{country_target.lower()}_{suffix}".rstrip("_")
-            p_dict["username"] = new_user
+            user = f"{prefix}_country_{target.lower()}_{suffix}".rstrip("_")
+        elif "_custom_zone_" in user:
+            # Example: USER_custom_zone_MA_st_... -> USER_custom_zone_CF_st_...
+            parts = user.split("_custom_zone_")
+            prefix = parts[0]
+            remaining = parts[1].split("_", 1)
+            suffix = remaining[1] if len(remaining) > 1 else ""
+            user = f"{prefix}_custom_zone_{target}_{suffix}".rstrip("_")
+            
+        p_dict["username"] = user
     
     req_proxies = format_proxy_for_requests({"proxy": p_dict})
     info = get_ip_info(req_proxies)
@@ -150,11 +160,17 @@ def get_sticky_proxy(base_proxy, country_code, thread_id):
     # We will inject/update country and session ID
     
     # 1. Ensure country is correct
+    target = country_code.upper()
     if "_country_" in user:
         parts = user.split("_country_")
         prefix = parts[0]
         rest = "_".join(parts[1].split("_")[1:])
-        user = f"{prefix}_country_{country_code.lower()}_{rest}"
+        user = f"{prefix}_country_{target.lower()}_{rest}"
+    elif "_custom_zone_" in user:
+        parts = user.split("_custom_zone_")
+        prefix = parts[0]
+        rest = "_".join(parts[1].split("_")[1:])
+        user = f"{prefix}_custom_zone_{target}_{rest}"
     
     # 2. Inject/Update Session ID (sid) for stickiness
     session_id = f"{int(time.time())}{thread_id}{random.randint(100, 999)}"

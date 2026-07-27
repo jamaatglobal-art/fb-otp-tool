@@ -63,6 +63,9 @@ def attempt_otp_resend(session, account_identifier, server="m.facebook.com", ctx
                       _search(r'name=\"jazoest\" value=\"([^\"]+)\"', res1.text) or \
                       _search(r'jazoest=([0-9]+)', res1.text) or "21049"
             
+            fb_dtsg = _search(r'name=\"fb_dtsg\" value=\"([^\"]+)\"', res1.text) or \
+                      _search(r'\"dtsg\":\{\"token\":\"([^\"]+)\"', res1.text)
+            
             if not lsd:
                 if i == 0: return False, "Security Token (LSD) Missing. Device or IP mismatch."
                 else: break
@@ -70,13 +73,15 @@ def attempt_otp_resend(session, account_identifier, server="m.facebook.com", ctx
             # Human Behavior: Wait before clicking resend
             time.sleep(random.uniform(2, 4))
 
-            # Step 2: Trigger Resend (Using updated endpoints)
-            # Some accounts use /recover/initiate for resend in newer updates
+            # Step 2: Trigger Resend (Using updated endpoints and full data)
             resend_url = f"https://{server}/confirmemail.php?next=https%3A%2F%2F{server}%2F&rd"
             data = {
                 'lsd': lsd,
                 'jazoest': jazoest,
-                'resend': '1'
+                'fb_dtsg': fb_dtsg,
+                'contact': account_identifier,
+                'resend': '1',
+                'type': 'submit'
             }
 
             res2 = session.post(resend_url, data=data, headers=headers, allow_redirects=True)

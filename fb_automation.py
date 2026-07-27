@@ -30,82 +30,94 @@ def _search(pattern, text):
 
 def attempt_otp_resend(session, account_identifier, server="m.facebook.com", ctx=None, resend_count=1):
     """
-    Attempts to resend OTP using synchronized session, proxy, and advanced detection.
+    Attempts to resend OTP using synchronized session, mirroring registration methods.
     """
-    headers = ctx["base_headers"] if ctx else {}
-    headers.update({
-        'Referer': f"https://{server}/confirmemail.php",
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': '*/*',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Dest': 'empty'
-    })
+    base_headers = ctx["base_headers"] if ctx else {}
     
     success_count = 0
     
     try:
         for i in range(resend_count):
             if i > 0:
-                # Human Behavior: Wait between resends
-                time.sleep(random.uniform(3, 7))
+                time.sleep(random.uniform(5, 10))
             
-            # Step 1: Visit confirm page (Human Behavior: visit main page/confirm page first)
+            # Step 1: Visit confirm page to get fresh tokens
             confirm_url = f"https://{server}/confirmemail.php"
-            res1 = session.get(confirm_url, headers=headers)
+            res1 = session.get(confirm_url, headers=base_headers)
+            html = res1.text
             
-            # Dynamic Token Parsing (Enhanced Regex + JSON fallback)
-            lsd = _search(r'\"LSD\",\[\],\{\"token\":\"([^\"]+)\"', res1.text) or \
-                  _search(r'name=\"lsd\" value=\"([^\"]+)\"', res1.text) or \
-                  _search(r'\"lsd\":\"([^\"]+)\"', res1.text)
-                  
-            jazoest = _search(r'\"jazoest\":\"([^\"]+)\"', res1.text) or \
-                      _search(r'name=\"jazoest\" value=\"([^\"]+)\"', res1.text) or \
-                      _search(r'jazoest=([0-9]+)', res1.text) or "21049"
+            # Mirror Registration: Extract all dynamic tokens
+            lsd = _search(r'name="lsd" value="([^"]+)"', html) or _search(r'"lsd":"([^"]+)"', html)
+            jazoest = _search(r'name="jazoest" value="([^"]+)"', html) or _search(r'"jazoest":"([^"]+)"', html) or "21049"
+            fb_dtsg = _search(r'name="fb_dtsg" value="([^"]+)"', html) or _search(r'"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"', html)
+            encrypted_token = _search(r'"encrypted"\s*:\s*"([^"]+)"', html) or _search(r'name="encrypted" value="([^"]+)"', html)
             
-            fb_dtsg = _search(r'name=\"fb_dtsg\" value=\"([^\"]+)\"', res1.text) or \
-                      _search(r'\"dtsg\":\{\"token\":\"([^\"]+)\"', res1.text)
-            
-            if not lsd:
-                if i == 0: return False, "Security Token (LSD) Missing. Device or IP mismatch."
-                else: break
+            if not lsd or not fb_dtsg:
+                return False, f"Token Missing (LSD: {'OK' if lsd else 'NO'}, DTSG: {'OK' if fb_dtsg else 'NO'})"
 
-            # Human Behavior: Wait before clicking resend
-            time.sleep(random.uniform(2, 4))
-
-            # Step 2: Trigger Resend (Using updated endpoints and full data)
-            resend_url = f"https://{server}/confirmemail.php?next=https%3A%2F%2F{server}%2F&rd"
+            # Mirror Registration: Setup AJAX/JSONStream headers
+            post_headers = dict(base_headers)
+            post_headers.update({
+                'accept': '*/*',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': f'https://{server}',
+                'referer': confirm_url,
+                'x-fb-lsd': lsd,
+                'x-requested-with': 'XMLHttpRequest',
+                'x-response-format': 'JSONStream',
+            })
+            post_headers.pop('upgrade-insecure-requests', None)
+            
+            # Mirror Registration: Setup data with dynamic parameters
             data = {
                 'lsd': lsd,
                 'jazoest': jazoest,
                 'fb_dtsg': fb_dtsg,
                 'contact': account_identifier,
                 'resend': '1',
-                'type': 'submit'
+                '__user': session.cookies.get("c_user", "0"),
+                '__a': encrypted_token if encrypted_token else "",
+                '__req': 'r',
+                '__fmt': '1',
             }
 
-            res2 = session.post(resend_url, data=data, headers=headers, allow_redirects=True)
+            # Step 2: POST resend with mirrored registration logic
+            resend_url = f"https://{server}/confirmemail.php?next=https%3A%2F%2F{server}%2F&rd"
+            res2 = session.post(resend_url, data=data, headers=post_headers, allow_redirects=True)
             
-            # Step 3: Success/Failure Detection
-            body = res2.text.lower()
+            # Step 3: Advanced Detection & Error Reporting
+            body = res2.text
+            body_lower = body.lower()
             
-            if "erreur" in body or "error" in body or "title>erreur" in body:
-                if i == 0: return False, "Facebook rejected the request (Silent Failure)."
-                else: break
-            
-            if "checkpoint" in body:
-                if i == 0: return False, "Account Checkpoint: Security block."
-                else: break
-            
-            if "try again later" in body or "réessayez plus tard" in body:
-                if i == 0: return False, "Rate Limited: Try another IP."
-                else: break
+            # If it's a JSONStream response, try to parse the actual error
+            error_msg = None
+            if "for (;;);" in body:
+                try:
+                    clean_json = body.split("for (;;);")[1]
+                    json_data = json.loads(clean_json)
+                    # Extract error from Facebook JSON response
+                    if "error" in json_data:
+                        error_msg = json_data.get("errorDescription") or json_data.get("errorMessage") or str(json_data["error"])
+                    elif "payload" in json_data and "error" in str(json_data["payload"]):
+                        error_msg = "Facebook Payload Error"
+                except:
+                    pass
 
-            if any(x in body for x in ["code", "sent", "envoyé", "confirm", "vérification"]) or "/recover/code/" in res2.url:
+            if error_msg:
+                return False, f"FB Error: {error_msg}"
+            
+            if "checkpoint" in body_lower:
+                return False, "Checkpoint: Security Block"
+            
+            if "try again later" in body_lower or "réessayez plus tard" in body_lower:
+                return False, "Rate Limited (Spam Block)"
+
+            if any(x in body_lower for x in ["code", "sent", "envoyé", "confirm", "vérification"]) or "/recover/code/" in res2.url:
                 success_count += 1
             else:
-                if i == 0: return False, "Sent but confirmation not detected."
-                else: break
+                # Fallback to general error if no success indicator
+                snippet = body.replace('\n', ' ')[:100]
+                return False, f"Rejected: {snippet}..."
         
         if success_count > 0:
             return True, f"OTP Sent Successfully {success_count} times!"

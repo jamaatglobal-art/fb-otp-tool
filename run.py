@@ -14,6 +14,7 @@ def main():
         print(f" {GREEN}[*] {WHITE}Welcome to FB Automation Suite (Upgraded)")
         print(f" {GREEN}[1] {WHITE}Start Registration -> Auto-Save Cookies -> Run OTP Tool")
         print(f" {GREEN}[2] {WHITE}Run OTP Tool Only (Using saved accounts.json)")
+        print(f" {GREEN}[3] {WHITE}Start with ADB")
         print(f" {GREEN}[0] {WHITE}Exit")
         print(f"{LINE}")
         
@@ -70,6 +71,26 @@ def main():
             print(f"\n {YELLOW}[*] Starting OTP Tool only...")
             time.sleep(1)
             os.system('python3 fb_automation.py')
+            input(f"\n {WHITE}Press Enter to return to menu...")
+            
+        elif choice == '3':
+            clear()
+            logo()
+            print(f"\n {YELLOW}[*] Initializing ADB Emulator Tool...")
+            time.sleep(1)
+            
+            adb_repo_dir = "fb-adb-tool"
+            if not os.path.exists(adb_repo_dir):
+                print(f" {YELLOW}[!] ADB tool not found locally. Cloning from repository...")
+                os.system('gh repo clone jamaatglobal-art/fb-adb-tool')
+            
+            if os.path.exists(adb_repo_dir):
+                print(f" {GREEN}[✔] Starting ADB session...")
+                time.sleep(1)
+                os.system(f'cd {adb_repo_dir} && python3 main.py')
+            else:
+                print(f" {RED}[✘] Failed to clone or find the ADB tool repository.")
+            
             input(f"\n {WHITE}Press Enter to return to menu...")
             
         elif choice == '0':

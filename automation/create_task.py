@@ -63,7 +63,7 @@ def create_worker(wid, phone_number, proxy_data, config, counter):
         session = create_http_session(device_type, proxy_dict)
         setup_session_cookies(session, device_type)
 
-                ctx = build_request_context(device_type, browser_type, locale)
+        ctx = build_request_context(device_type, browser_type, locale)
         base_headers = ctx["base_headers"]
         
         # Mirroring: Ensure screen metrics are set in cookies for stickiness

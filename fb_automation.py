@@ -103,9 +103,53 @@ def attempt_otp_resend(session, account_identifier, server="m.facebook.com", ctx
                 '__fmt': '1',
             }
 
-            # Step 2: POST resend with mirrored registration logic
-            resend_url = f"https://{server}/confirmemail.php?next=https%3A%2F%2F{server}%2F&rd"
-            res2 = session.post(resend_url, data=data, headers=post_headers, allow_redirects=True)
+            # Step 2: POST resend using Bloks Async Endpoint (from user curl)
+            resend_url = f"https://{server}/async/wbloks/fetch/?appid=com.bloks.www.bloks.caa.reg.resend_confirmation.async&type=action&__bkv=3d42969375686fea8edab596f65bcabfc317d1702049db8a1980cf0fe9c178bc"
+            
+            # Extract additional tokens from html if present for Bloks
+            hs = _search(r'"haste_session":"([^"]+)"', html) or "20661.BP%3Amtouch_pkg.2.0...0"
+            rev = _search(r'"client_revision":([0-9]+)', html) or "1043899084"
+            hsi = _search(r'"hsi":"([0-9]+)"', html) or "7667276950502928262"
+            
+            # Construct the complex params string (URL encoded JSON)
+            # This is a simplified version targeting the resend action
+            params_json = {
+                "params": json.dumps({
+                    "server_params": json.dumps({
+                        "reg_info": json.dumps({
+                            "contactpoint": f"+{account_identifier}",
+                            "contactpoint_type": "phone",
+                            "confirmation_medium": "sms",
+                            "user_id": session.cookies.get("c_user", ""),
+                            "is_preform": True
+                        }),
+                        "flow_info": json.dumps({
+                            "flow_name": "new_to_family_fb_default",
+                            "flow_type": "ntf"
+                        }),
+                        "current_step": 10
+                    }),
+                    "client_input_params": {}
+                })
+            }
+            
+            bloks_data = {
+                '__user': session.cookies.get("c_user", "0"),
+                '__a': '1',
+                '__req': '3',
+                '__hs': hs,
+                'dpr': '3',
+                '__ccg': 'EXCELLENT',
+                '__rev': rev,
+                '__hsi': hsi,
+                '__dyn': _search(r'"__dyn":"([^"]+)"', html) or "",
+                'fb_dtsg': fb_dtsg,
+                'jazoest': jazoest,
+                'lsd': lsd,
+                'params': params_json["params"]
+            }
+
+            res2 = session.post(resend_url, data=bloks_data, headers=post_headers, allow_redirects=True)
             
             # Step 3: Advanced Detection & Error Reporting
             body = res2.text

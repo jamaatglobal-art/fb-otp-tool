@@ -198,7 +198,8 @@ def create_worker(wid, phone_number, proxy_data, config, counter):
                     "device_type": device_type,
                     "browser_type": browser_type,
                     "server": server,
-                    "locale": locale
+                    "locale": locale,
+                    "proxy_data": proxy_data
                 }
             }
             

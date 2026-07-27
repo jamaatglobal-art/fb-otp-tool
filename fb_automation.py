@@ -29,26 +29,38 @@ def _search(pattern, text):
 
 def attempt_otp_request(session, account_identifier, server="m.facebook.com", ctx=None):
     """
-    Attempts an OTP request using advanced detection.
-    Steps:
-    1. Visit /login/identify to get tokens.
-    2. Submit the identifier to find the account.
-    3. Select the SMS/Email OTP method.
-    4. Verify if the code was actually sent.
+    Attempts an OTP request using advanced detection and fallback endpoints.
     """
     headers = ctx["base_headers"] if ctx else {}
+    # Ensure Referer is set to avoid some security checks
+    headers['Referer'] = f"https://{server}/"
     
     try:
-        # Step 1: Initial identify page to get tokens (LSD, jazoest)
-        identify_url = f"https://{server}/login/identify/?ctx=recover"
-        res1 = session.get(identify_url, headers=headers)
+        # Step 1: Visit initial page to get session tokens
+        # We try a few different endpoints if one fails
+        endpoints = [
+            f"https://{server}/login/identify/?ctx=recover",
+            f"https://{server}/recover/initiate/",
+            f"https://{server}/login/device-based/password/reset/"
+        ]
+        
+        res1 = None
+        for url in endpoints:
+            try:
+                res1 = session.get(url, headers=headers, timeout=10)
+                if 'name="lsd"' in res1.text:
+                    break
+            except:
+                continue
+        
+        if not res1 or 'name="lsd"' not in res1.text:
+            return False, "Failed to fetch security tokens (LSD missing)."
+
         lsd = _search(r'name="lsd" value="([^"]+)"', res1.text)
         jazoest = _search(r'name="jazoest" value="([^"]+)"', res1.text)
         
-        if not lsd:
-            return False, "Failed to fetch security tokens (LSD missing)."
-
         # Step 2: Search for the account
+        # Use mbasic for better reliability in scraping if m.facebook fails
         search_url = f"https://{server}/login/identify/?ctx=recover&search_attempts=1"
         data = {
             'lsd': lsd,
@@ -56,27 +68,35 @@ def attempt_otp_request(session, account_identifier, server="m.facebook.com", ct
             'email': account_identifier,
             'did_submit': 'Search'
         }
-        res2 = session.post(search_url, data=data, headers=headers, allow_redirects=True)
         
-        if "identify_search_error" in res2.text:
+        # Update headers for POST
+        post_headers = headers.copy()
+        post_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+        
+        res2 = session.post(search_url, data=data, headers=post_headers, allow_redirects=True)
+        
+        if "identify_search_error" in res2.text or "Account not found" in res2.text:
             return False, "Account not found or Search Limit reached."
 
-        # Step 3: Check if we are on the 'select method' page
-        # Usually it redirects to /recover/initiate/
-        if "/recover/initiate/" not in res2.url and "recover" not in res2.text:
-             return False, "Could not reach recovery initiation page."
+        # Step 3: Extract recovery method
+        # Look for SMS or Email recovery options
+        # Pattern for recover_method usually looks like "send_email", "send_sms", "send_whatsapp"
+        methods = re.findall(r'name="recover_method" value="([^"]+)"', res2.text)
+        
+        if not methods:
+            # Fallback: Check if we are already on a page that says "We sent a code"
+            if "code" in res2.text.lower() and "sent" in res2.text.lower():
+                return True, "OTP already sent (Detected in response)."
+            return False, "No recovery method (SMS/Email) found. Account might be locked."
 
-        # Extract recovery tokens
+        # Try the first available method (usually SMS or Email)
+        recover_method = methods[0]
+        
+        # Get new tokens from the current page
         lsd = _search(r'name="lsd" value="([^"]+)"', res2.text) or lsd
         jazoest = _search(r'name="jazoest" value="([^"]+)"', res2.text) or jazoest
         
-        # Step 4: Request the code (Trigger OTP)
-        # We need to find the 'recover_method' value (e.g., send_email, send_sms)
-        # For simplicity, we try to trigger the first available method
-        recover_method = _search(r'name="recover_method" value="([^"]+)"', res2.text)
-        if not recover_method:
-            return False, "No recovery method (SMS/Email) found for this account."
-
+        # Step 4: Final Trigger
         initiate_url = f"https://{server}/recover/initiate/"
         data = {
             'lsd': lsd,
@@ -85,32 +105,36 @@ def attempt_otp_request(session, account_identifier, server="m.facebook.com", ct
             'reset_action': 'Send Code'
         }
         
-        res3 = session.post(initiate_url, data=data, headers=headers, allow_redirects=True)
+        res3 = session.post(initiate_url, data=data, headers=post_headers, allow_redirects=True)
         
-        # Step 5: Verify Success
-        # Look for the 'enter_code' input or confirmation message
-        if "n" in res3.url and ("confirm" in res3.text.lower() or "code" in res3.text.lower()):
-            return True, f"OTP Sent via {recover_method}!"
-        elif "checkpoint" in res3.text.lower():
-            return False, "Account Checkpoint (Security Blocked)."
-        elif "try again later" in res3.text.lower():
-            return False, "Rate Limited: Try again later."
+        # Step 5: Verify
+        if res3.status_code == 200:
+            if any(x in res3.text.lower() for x in ["enter code", "confirm your account", "we sent a code"]):
+                return True, f"OTP Sent successfully via {recover_method}!"
+            elif "checkpoint" in res3.text.lower():
+                return False, "Account Checkpoint (Security Blocked)."
+            elif "try again later" in res3.text.lower():
+                return False, "Rate Limited: Try again later."
+            else:
+                # Sometimes it sends but the text is different
+                if "/recover/code/" in res3.url:
+                    return True, f"OTP Sent (Redirected to code entry)."
+                return False, "Sent but confirmation not detected."
         else:
-            return False, "Request submitted but confirmation not found."
+            return False, f"Final Request Failed (HTTP {res3.status_code})"
 
     except Exception as e:
-        return False, f"Exception: {str(e)[:50]}"
+        return False, f"Error: {str(e)[:40]}"
 
 def main():
     logo()
-    print(f" {GREEN}[{RED}●{GREEN}] {WHITE}Facebook OTP Tool - Precise Mode (2026)")
-    print(f" {GREEN}[{RED}●{GREEN}] {WHITE}Analyzing and Sending OTP...")
+    print(f" {GREEN}[●] {WHITE}Facebook OTP Tool - Precise Mode (2026)")
+    print(f" {GREEN}[●] {WHITE}Analyzing and Sending OTP...")
     print(f"{LINE}")
     
     accounts = load_accounts()
     if not accounts:
         print(f" {RED}[!] No accounts found in {ACCOUNTS_FILE}")
-        print(f" {YELLOW}[*] Run the registration tool first to generate accounts.")
         return
 
     counter = Counter()
@@ -119,7 +143,11 @@ def main():
     server = "m.facebook.com"
     locale = "en_US"
 
-    for account_name, data in accounts.items():
+    # Process accounts in reverse order (newest first)
+    account_items = list(accounts.items())
+    account_items.reverse()
+
+    for account_name, data in account_items:
         identifier = data.get('identifier')
         cookies_data = data.get('cookies')
         
@@ -129,6 +157,7 @@ def main():
         print(f" {CYAN}[*] Target: {identifier}")
         
         try:
+            # Use curl_cffi for real TLS fingerprinting
             session = create_http_session(device_type)
             setup_session_cookies(session, device_type)
             
@@ -143,19 +172,18 @@ def main():
             if success:
                 counter.update("success", number=identifier, message=message, color=GREEN)
             else:
-                # Color code errors based on message
-                color = RED if "Failed" in message or "Exception" in message else YELLOW
+                color = RED if "LSD" in message or "Error" in message else YELLOW
                 counter.update("failed", number=identifier, message=message, color=color)
                 
         except Exception as e:
-            counter.update("error", number=identifier, message=str(e)[:50], color=RED)
+            counter.update("error", number=identifier, message=str(e)[:40], color=RED)
 
-        # Safety delay
-        time.sleep(random.uniform(3, 7))
+        # Random human-like delay
+        time.sleep(random.uniform(4, 8))
 
     print(f"\n{LINE}")
     s = counter.summary()
-    print(f" {GREEN}[{RED}●{GREEN}] {WHITE}Total: {s['checked']} | {GREEN}Sent: {s['success']} | {RED}Failed/Blocked: {s['failed']}")
+    print(f" {GREEN}[●] {WHITE}Total: {s['checked']} | {GREEN}Sent: {s['success']} | {RED}Failed: {s['failed']}")
     print(f"{LINE}")
 
 if __name__ == "__main__":

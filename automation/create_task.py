@@ -7,7 +7,7 @@ import os
 from faker import Faker
 
 from ui.colors import GREEN, RED, WHITE, YELLOW, ORANGE, CYAN
-from core.email_manager import remove_email
+from core.number_manager import remove_number
 from core.proxy_manager import format_proxy_for_requests
 from core.session_builder import create_http_session, build_request_context, setup_session_cookies
 
@@ -50,8 +50,8 @@ def _search(pattern, text):
     return m.group(1) if m else None
 
 
-# Core worker - handles the full registration flow for a single email
-def create_worker(wid, email, proxy_data, config, counter):
+# Core worker - handles the full registration flow for a single phone number
+def create_worker(wid, phone_number, proxy_data, config, counter):
     device_type = config.get("device_type", "Android")
     browser_type = config.get("browser_type", "Default")
     server = config.get("server", "m.facebook.com")
@@ -84,7 +84,7 @@ def create_worker(wid, email, proxy_data, config, counter):
         required = [ccp, lsd, jazoest, reg_instance, reg_impression_id,
                     ns_value, logger_id, encrypted_token, fb_dtsg, privacy_token]
         if not all(required):
-            counter.update("error", number=email, message="Failed to Parse Tokens", color=ORANGE)
+            counter.update("error", number=phone_number, message="Failed to Parse Tokens", color=ORANGE)
             return
 
         privacy_token = privacy_token.replace('%3D', '=')
@@ -132,7 +132,7 @@ def create_worker(wid, email, proxy_data, config, counter):
             'age_step_input': '',
             'did_use_age': 'false',
             'field_names[2]': 'reg_email__',
-            'reg_email__': email,
+            'reg_email__': phone_number,
             'field_names[3]': 'sex',
             'sex': identity["sex_value"],
             'preferred_pronoun': '',
@@ -170,16 +170,34 @@ def create_worker(wid, email, proxy_data, config, counter):
             uid = cookies.get("c_user", "")
             cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
             counter.update(
-                "success", number=email,
+                "success", number=phone_number,
                 message=f" Name : {name} | Birthday : {identity['b_day']}/{identity['b_month']}/{identity['b_year']} \n [KABBO-PRO] {uid} | {identity['password']} | {cookie_str}",
                 color=GREEN,
             )
-            remove_email(email)
+            remove_number(phone_number)
 
             # Save successful account credentials to output file
             os.makedirs("output", exist_ok=True)
             with open("output/success.txt", "a", encoding="utf-8") as f:
-                f.write(f"{uid}|{identity['password']}|{email}|{cookie_str}\n")
+                f.write(f"{uid}|{identity['password']}|{cookie_str}\n")
+
+            # Automatically save to accounts.json for the OTP tool
+            accounts_file = 'accounts.json'
+            accounts_data = {}
+            if os.path.exists(accounts_file):
+                try:
+                    with open(accounts_file, 'r') as f:
+                        accounts_data = json.load(f)
+                except Exception:
+                    accounts_data = {}
+            
+            accounts_data[f"acc_{uid}"] = {
+                "identifier": phone_number,
+                "cookies": cookies
+            }
+            
+            with open(accounts_file, 'w') as f:
+                json.dump(accounts_data, f, indent=4)
 
         else:
             # Parse error response for debugging
@@ -191,7 +209,7 @@ def create_worker(wid, email, proxy_data, config, counter):
                 debug_msg = response_text.replace('\n', ' ')[:300]
 
             counter.update(
-                "failed", number=email,
+                "failed", number=phone_number,
                 message=f"Failed | Debug: {debug_msg}...",
                 color=YELLOW,
             )
@@ -199,8 +217,8 @@ def create_worker(wid, email, proxy_data, config, counter):
     except Exception as e:
         err = str(e)
         if "proxy" in err.lower():
-            counter.update("error", number=email, message="Proxy Error", color=RED)
+            counter.update("error", number=phone_number, message="Proxy Error", color=RED)
         elif "timeout" in err.lower() or "timed out" in err.lower():
-            counter.update("error", number=email, message="Timeout", color=RED)
+            counter.update("error", number=phone_number, message="Timeout", color=RED)
         else:
-            counter.update("error", number=email, message=err[:50], color=RED)
+            counter.update("error", number=phone_number, message=err[:50], color=RED)

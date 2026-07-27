@@ -18,7 +18,7 @@ from ui.display import print_lock
 from core.device_manager import select_device, select_browser, select_server
 from core.proxy_manager import get_proxy_list, create_proxy_cycle, get_no_proxy_data
 from core.worker_manager import get_worker_count
-from core.email_manager import process_file_input
+from core.number_manager import process_file_input
 from core.counter import Counter
 from automation.create_task import create_worker
 
@@ -48,12 +48,12 @@ def run_create():
 
     render_config(config_state)
 
-    emails = process_file_input()
-    if emails is None:
+    numbers = process_file_input()
+    if numbers is None:
         input(f"\n {RED}Press Enter to exit...")
         return
-    if not emails:
-        input(f"\n {RED}No emails found. Press Enter to exit...")
+    if not numbers:
+        input(f"\n {RED}No numbers found. Press Enter to exit...")
         return
 
     render_config(config_state)
@@ -74,11 +74,11 @@ def run_create():
 
     try:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for email in emails:
+            for num in numbers:
                 sem.acquire()
                 proxy_data = next(proxy_cycle) if proxy_cycle else no_proxy_data
                 wid = next(wid_gen)
-                future = executor.submit(create_worker, wid, email, proxy_data, config, counter)
+                future = executor.submit(create_worker, wid, num, proxy_data, config, counter)
                 future.add_done_callback(lambda _: sem.release())
     except KeyboardInterrupt:
         print(f"\n\n {RED}Stopped by user.")
@@ -90,7 +90,7 @@ def run_create():
 
         s = counter.summary()
         print(f"{LINE}")
-        print(f" {GREEN}[{RED}●{GREEN}] {WHITE}Completed: {s['checked']} Emails (Auto Create)")
+        print(f" {GREEN}[{RED}●{GREEN}] {WHITE}Completed: {s['checked']} Numbers (Auto Create)")
         print(f" {GREEN}[{RED}●{GREEN}] {GREEN}Success: {s['success']}")
         print(f" {GREEN}[{RED}●{GREEN}] {YELLOW}Failed: {s['failed']}")
         print(f" {GREEN}[{RED}●{GREEN}] {RED}Error: {s['error']}")

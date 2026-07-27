@@ -41,18 +41,40 @@ def attempt_otp_resend(session, account_identifier, server="m.facebook.com", ctx
             if i > 0:
                 time.sleep(random.uniform(5, 10))
             
-            # Step 1: Visit confirm page to get fresh tokens
+            # Step 1: Visit confirm page to get fresh tokens (with retry for Proxy CONN errors)
             confirm_url = f"https://{server}/confirmemail.php"
-            res1 = session.get(confirm_url, headers=base_headers)
+            res1 = None
+            for retry in range(3):
+                try:
+                    res1 = session.get(confirm_url, headers=base_headers, timeout=30)
+                    break
+                except Exception as e:
+                    if "curl: (56)" in str(e) and retry < 2:
+                        time.sleep(2)
+                        continue
+                    raise e
+            
             html = res1.text
             
-            # Mirror Registration: Extract all dynamic tokens
-            lsd = _search(r'name="lsd" value="([^"]+)"', html) or _search(r'"lsd":"([^"]+)"', html)
-            jazoest = _search(r'name="jazoest" value="([^"]+)"', html) or _search(r'"jazoest":"([^"]+)"', html) or "21049"
-            fb_dtsg = _search(r'name="fb_dtsg" value="([^"]+)"', html) or _search(r'"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"', html)
-            encrypted_token = _search(r'"encrypted"\s*:\s*"([^"]+)"', html) or _search(r'name="encrypted" value="([^"]+)"', html)
+            # Mirror Registration: Extract all dynamic tokens (Enhanced for OTP page)
+            lsd = _search(r'name="lsd" value="([^"]+)"', html) or \
+                  _search(r'"lsd":"([^"]+)"', html) or \
+                  _search(r'\["LSD",\[\],\{"token":"([^"]+)"\}', html) or \
+                  _search(r'LSD.*?token":"([^"]+)"', html)
+                  
+            jazoest = _search(r'name="jazoest" value="([^"]+)"', html) or \
+                      _search(r'"jazoest":"([^"]+)"', html) or \
+                      _search(r'jazoest=([0-9]+)', html) or "21049"
+                      
+            fb_dtsg = _search(r'name="fb_dtsg" value="([^"]+)"', html) or \
+                      _search(r'"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"', html) or \
+                      _search(r'"fb_dtsg":"([^"]+)"', html)
+                      
+            encrypted_token = _search(r'"encrypted"\s*:\s*"([^"]+)"', html) or \
+                               _search(r'name="encrypted" value="([^"]+)"', html)
             
             if not lsd or not fb_dtsg:
+                # If LSD is missing but we have DTSG, try to fallback to cookies if possible or report clearly
                 return False, f"Token Missing (LSD: {'OK' if lsd else 'NO'}, DTSG: {'OK' if fb_dtsg else 'NO'})"
 
             # Mirror Registration: Setup AJAX/JSONStream headers

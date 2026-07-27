@@ -150,23 +150,23 @@ def main():
             if proxy_dict:
                 print(f" {YELLOW}[*] Using Sync Proxy: {proxy_data.get('proxy', '...')}")
             
-        # Create session with SAME device and proxy
-        session = create_http_session(device_type, proxy_dict)
-        
-        # Load persisted screen metrics
-        screen_res = config.get('screen_res', '720x1280')
-        session.cookies.update({"m_pixel_ratio": "1", "wd": screen_res})
-        
-        for k, v in cookies_data.items():
-            session.cookies.set(k, v, domain=".facebook.com")
-        
-        # Use persisted headers for Full Header Mirroring
-        persisted_headers = config.get('headers')
-        if persisted_headers:
-            ctx = {"base_headers": persisted_headers}
-        else:
-            ctx = build_request_context(device_type, browser_type, locale)
-        
+            # Create session with SAME device and proxy
+            session = create_http_session(device_type, proxy_dict)
+            
+            # Load persisted screen metrics
+            screen_res = config.get('screen_res', '720x1280')
+            session.cookies.update({"m_pixel_ratio": "1", "wd": screen_res})
+            
+            for k, v in cookies_data.items():
+                session.cookies.set(k, v, domain=".facebook.com")
+            
+            # Use persisted headers for Full Header Mirroring
+            persisted_headers = config.get('headers')
+            if persisted_headers:
+                ctx = {"base_headers": persisted_headers}
+            else:
+                ctx = build_request_context(device_type, browser_type, locale)
+            
             success, message = attempt_otp_resend(session, identifier, server, ctx, resend_count)
             
             if success:

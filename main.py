@@ -16,7 +16,7 @@ from ui.logo import logo
 from ui.colors import GREEN, RED, WHITE, YELLOW, CYAN, EKL, LINE
 from ui.display import print_lock
 from core.device_manager import select_device, select_browser, select_server
-from core.proxy_manager import get_proxy_list, create_proxy_cycle, get_no_proxy_data
+from core.proxy_manager import get_proxy_list, get_no_proxy_data
 from core.worker_manager import get_worker_count
 from core.number_manager import process_file_input
 from core.counter import Counter
